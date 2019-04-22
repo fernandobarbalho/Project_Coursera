@@ -1,0 +1,194 @@
+---
+title: "Course Project - Submission"
+author: "Fernando Almeida Barbalho"
+date: "22 de abril de 2019"
+output: html_document
+---
+
+```{r setup, include= FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+## Downloading the file
+
+The analysis done here use the following dataset
+
+*Training Dataset*
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+
+The R instructions bellow download the file and attibute it to a dataframe.
+
+The columns related to stastics metrics were excluded. 
+
+```{r download}
+library(readr)
+library(dplyr)
+
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", destfile = "pml-training.csv")
+pml_training <- read_csv("pml-training.csv")
+
+pml_train_trabalho<-pml_training %>% select(-c(12:36,50:59,69:83,87:101,103:112, 125:139, 141:150))
+
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile = "pml-testing.csv")
+
+pml_testing <- read_csv("pml-testing.csv")
+
+pml_test_trabalho<-pml_testing %>% select(-c(12:36,50:59,69:83,87:101,103:112, 125:139, 141:150))
+
+```
+
+## Choosing the method
+
+As there are many possibilities to apply ML algorithms, this work will be focused on those ones that were presented in the **Practical Machine Learning course**.
+
+In this sense, the dataset was trained using the following methods:
+
+- rpart
+- rf
+- treebag
+- gbm
+
+
+Some of the methods presented on the course were not put in consideration:
+
+- forecasting: the problem is not related to predict future values on a time series
+- clusters: the categories were given
+
+I executed the following lines to generate the models, evaluate the time spent in training the models and also to evaluate their accurancies:
+
+
+```{r}
+library(caret)
+library(lubridate)
+
+#the variables 2:7 are not considered on the model
+pml_train_model <- pml_train_trabalho[,-c(2:7)]
+inTrain<- createDataPartition(y= pml_train_model$X1, p=0.7, list = FALSE)
+
+pml_train_model<- pml_train_model[inTrain,]
+
+
+
+# prepare training scheme: 30 resamples from 10 folders with 3 repeats 
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+
+set.seed(13)
+ini_rpatr<- now()
+model_rpart<- train(classe~.,method = "rpart", data = pml_train_model, trControl = control)
+end_rpatr<- now()
+print(end_rpatr- ini_rpatr)
+
+
+
+set.seed(13)
+ini_rf <- now()
+model_rf<- train(classe~.,method = "rf", data = pml_train_model, trControl = control)
+end_rf <- now()
+print(end_rf- ini_rf)
+
+
+set.seed(13)
+ini_bag<-now()
+model_treebag<- train(classe~.,method = "treebag", data = pml_train_model, trControl = control)
+end_bag<-now()
+print(end_bag-ini_bag)
+
+
+set.seed(13)
+ini_gbm<-now()
+model_gbm<- train(classe~.,method = "gbm", data = pml_train_model, trControl = control)
+end_gbm <- now()
+print(end_gbm - ini_gbm)
+
+
+
+
+# collect resamples
+results <- resamples(list(rpart=model_rpart, 
+                          rf=model_rf, 
+                          treebag=model_treebag, 
+                          gbm=model_gbm))
+pos_obj<- which(ls() %in% c("pml_training","pml_train_trabalho","pml_testing","pml_test_trabalho","pml_train_model"))
+
+save (list= "results", file="results.RData")
+save (list="model_treebag", file="model_treebag.RData")
+save (list="inTrain", file = "inTrain.RData")
+
+```
+
+As it can be seen above, the columns related to the windows of the trainings were not included in the models. 
+
+See also that the strategy for cross-validation used for each model included 30 resample, with 10 folders with 3 repeats, each.
+
+Bellow is described a summary of the results associated with the resamples over the four models. 
+```{r}
+library(mlbench)
+library(caret)
+
+load("results.RData")
+
+dotplot(results)
+  
+  
+```
+
+As shown in the graph above, the accurancies of the methods **bgm**, **rf** and **treebag** are very close to each other with values near 100% in a 95% confidence level. So, the key to choose the best method will be the time consumption to train and run the models. The graph bellow shows these measures.
+
+
+```{r}
+library(ggplot2)
+library(tidyr)
+
+
+timing <- results$timings
+
+timing %>% 
+  mutate( method=row.names(timing)) %>%
+  select(method, Everything,FinalModel) %>%
+  gather(key = Type_Measure, value= Value, -method) %>%
+  ggplot(aes(x= method, y=Value)) +
+  geom_col() +
+  facet_grid("Type_Measure ~.", scales = "free_y") +
+  theme_minimal() +
+  theme(
+    panel.grid = element_blank() 
+  )+
+  ylab("Time in seconds") 
+
+```
+
+The graph above demonstrates that the treebag method is by far the fastest in both training all the samples and also in executing the Final Model. Therefore, the method chosen for the predictions is the **treebag** one.
+
+The final step on this project is estimate the expected out of sample error. I used a randomic subset of the train set to test this measurement. Please, see the following lines of code
+
+```{r}
+load("model_treebag.RData")
+load("inTrain.RData")
+
+set.seed(1972)
+
+pred1<- predict(model_treebag$finalModel,pml_training[-inTrain,])
+
+confusionMatrix(pred1, factor(pml_training$classe[-inTrain]))
+
+```
+
+The Confusion Matrix above shows that is expected an accurancy out of sample very close to the one measured with the train set. This accurancy combined to a very fast method to evaluate data gathered from real use cases, demonstrates that the **treebag** final model can be used in almost real time applications that measures the performance of gym sutdents.
+
+Now it´s the moment to use this model to predict the results over the 20 cases of the test set. See below
+
+```{r}
+library(DT)
+
+set.seed(1972)
+
+pred_test<- predict(model_treebag$finalModel,pml_test_trabalho)
+
+pml_test_trabalho$classe <- pred_test
+
+
+DT::datatable(pml_test_trabalho[,c(60,61)], rownames = FALSE)
+
+```
+
