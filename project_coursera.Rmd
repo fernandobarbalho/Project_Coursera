@@ -30,7 +30,7 @@ pml_training <- read_csv("pml-training.csv")
 
 pml_train_trabalho<-pml_training %>% select(-c(12:36,50:59,69:83,87:101,103:112, 125:139, 141:150))
 
-download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile = "pml-testing.csv")
+#download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile = "pml-testing.csv")
 
 pml_testing <- read_csv("pml-testing.csv")
 
@@ -58,13 +58,13 @@ Some of the methods presented on the course were not put in consideration:
 I executed the following lines to generate the models, evaluate the time spent in training the models and also to evaluate their accurancies:
 
 
-```{r}
+```{}
 library(caret)
 library(lubridate)
 
 #the variables 2:7 are not considered on the model
-pml_train_model <- pml_train_trabalho[,-c(2:7)]
-inTrain<- createDataPartition(y= pml_train_model$X1, p=0.7, list = FALSE)
+pml_train_model <- pml_train_trabalho[,-c(1:7)]
+inTrain<- createDataPartition(y= pml_train_model$classe, p=0.7, list = FALSE)
 
 pml_train_model<- pml_train_model[inTrain,]
 
@@ -168,13 +168,14 @@ load("inTrain.RData")
 
 set.seed(1972)
 
+
 pred1<- predict(model_treebag$finalModel,pml_training[-inTrain,])
 
 confusionMatrix(pred1, factor(pml_training$classe[-inTrain]))
 
 ```
 
-The Confusion Matrix above shows that is expected an accurancy out of sample very close to the one measured with the train set. This accurancy combined to a very fast method to evaluate data gathered from real use cases, demonstrates that the **treebag** final model can be used in almost real time applications that measures the performance of gym sutdents.
+The Confusion Matrix above shows that is expected an accurancy out of sample very close to the one measured with the train set. The error is estimated in less than 2% This accurancy combined to a very fast method to evaluate data gathered from real use cases, demonstrates that the **treebag** final model can be used in almost real time applications that measures the performance of gym sutdents.
 
 Now it´s the moment to use this model to predict the results over the 20 cases of the test set. See below
 
@@ -183,7 +184,11 @@ library(DT)
 
 set.seed(1972)
 
-pred_test<- predict(model_treebag$finalModel,pml_test_trabalho)
+
+pml_test_model <- pml_test_trabalho[,-c(1:7,60)]
+
+
+pred_test<- predict(model_treebag$finalModel,pml_test_model)
 
 pml_test_trabalho$classe <- pred_test
 
